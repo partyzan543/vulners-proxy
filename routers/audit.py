@@ -53,6 +53,43 @@ async def audit_audit(request: Request) -> ORJSONResponse:
         }
         router.cache.set_many(prepared_cache, expire=router.settings.cache_timeout)
     else:
+        temp_results = {
+            "result": "OK",
+            "data": {
+                "packages": {},
+                "vulnerabilities": [],
+                "reasons": [],
+                "cvss": {
+                    "score": 0,
+                    "vector": "NONE"
+                },
+                "cvelist": [],
+                "cumulativeFix": ""
+            },
+        }
+
+
+        temp_data = temp_results["data"]
+        temp_data.setdefault("packages", {}).update(
+            {key: value for key, value in packages_data.items() if value != "empty"}
+        )
+        list_scores = []
+        def get_score(package):
+            arr_vulners = []
+            vulners = list(temp_data["packages"][package].keys())
+            for vul in range(len(vulners)):
+                arr_vulners.append(vulners[vul])
+                for v in range(len(arr_vulners)):
+                    h = temp_data["packages"][package][arr_vulners[v]]
+                    list_scores.append(h[0]["cvss"].get('score'))
+            return list_scores
+        package = list(temp_data["packages"].keys())
+        try:
+             for z in range(len(package)):
+                 get_score(package[z])
+             scores = max(list_scores)
+        except:
+            scores = 0.0
         router.statistics[dispatcher] += 1
         vulners_results = {
             "result": "OK",
@@ -61,13 +98,14 @@ async def audit_audit(request: Request) -> ORJSONResponse:
                 "vulnerabilities": [],
                 "reasons": [],
                 "cvss": {
-                    "score": 0.0,
+                    "score": scores,
                     "vector": "NONE"
                 },
                 "cvelist": [],
                 "cumulativeFix": ""
             },
         }
+
 
     result_data = vulners_results["data"]
     result_data.setdefault("packages", {}).update(
@@ -86,7 +124,6 @@ async def audit_audit(request: Request) -> ORJSONResponse:
         for reasons in package.values()
         for reason in reasons
     ]
-
     cumulative_fix = []
     for reason in result_data["reasons"]:
         for word in reason["fix"].split():
@@ -94,7 +131,6 @@ async def audit_audit(request: Request) -> ORJSONResponse:
                 continue
             cumulative_fix.append(word)
     result_data["cumulativeFix"] = " ".join(cumulative_fix)
-
     return ORJSONResponse(
         content=vulners_results,
     )
